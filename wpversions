@@ -1,0 +1,204 @@
+#!/bin/bash
+#------------------------------------------------------------------------------#
+#   Locate all installs of Wordpress on the server.                            #
+#                                                                              #
+#   Supply the path to save the file. File does not need to exist.             #
+#                                                                              #
+#   @Author: Ammon Shepherd                                                    #
+#   @Date:   05.09.11                                                          #
+    VERSION="1.4.1"                                                            # 
+#                                                                              #
+#   CHANGE LOG:                                                                #
+#       03.17.09    - Added check so that program can't overwrite itself...    #
+#                     cause I just did that... :). Changed some echoed text.   #
+#       07.23.10    - Added check for repository. Changed layout of report.    #
+#       08.03.10    - Added totals to the bottom of the file.                  #
+#                   - Added BASH check for unset variables and return values   #
+#       02.07.10    - Added additional WP security checks, and flag to skip    #
+#       05.09.11    - Added line in report that shows latest WP version        #
+#------------------------------------------------------------------------------#
+#    TODO: Finish WP security checks
+
+set -e # End the script if any statement returns a non-true return value
+set -u # End script if an unset variable is encountered.
+
+# Set colors for echo
+black='\E[30;40m'
+red='\E[1;31;40m'
+green='\E[32;40m'
+yellow='\E[33;40m'
+blue='\E[1;34;40m'
+magenta='\E[35;40m'
+cyan='\E[36;40m'
+white='\E[1;37;40m'
+reset=`tput sgr0`
+
+##############
+# Check for value in wp-config.php
+function check_config {
+    value=`grep "'$1'" $2/wp-config.php | cut -d"," -f2 | sed -e "s|'||g" -e 's|"||g' -e 's|)||g' -e 's|;||g' -e 's| ||g' -e 's|\r||g'`
+    if [ "$value" == "putyouruniquephrasehere" ]; then
+        echo -e "\t- $1 needs to be changed" >> $VERSIONFILE
+    elif [ "$value" == "" ]; then
+        echo -e "\t- $1 does not exist" >> $VERSIONFILE
+    fi
+}
+##############
+
+
+CHECK=''
+
+while getopts "c" options; do
+    case $options in
+        c ) CHECK="true";;
+    esac
+done
+shift `expr $OPTIND - 1`
+
+echo -n "Type in the full path to a file to store the installs: "
+read -e VERSIONFILE
+
+# Don't let the script over write itself
+if [ $VERSIONFILE == $0 ]; then
+    echo -n "Attempting to use the program's file name, type a different file: "
+    read -e VERSIONFILE
+fi
+
+if [ -f $VERSIONFILE ]; then
+    echo -en "${red}Overwrite existing file ${VERSIONFILE}${reset}? (y/n): "
+    read answer
+    if [ $answer == "y" ];then
+        rm $VERSIONFILE
+    else
+        echo -n "Enter new name for file: "
+        read -e VERSIONFILE
+    fi
+fi
+
+fullpath=( $(locate 'wp-includes/version.php') )
+
+cache=''
+svninstalls=''
+notsvn=''
+count=''
+for path in ${fullpath[*]}
+    do
+        if [ -f $path ]; then
+            directory=`ls $path | sed -e "s|wp-includes/version.php||"`
+            echo $directory >> $VERSIONFILE
+            version=`grep "wp_version = " $path | cut -d" " -f3 | sed -e "s|'||g" -e "s|;||g"`
+
+            ###############
+            # Check to see if it's an .svn install
+            if [[ -d $directory/.svn && -f $directory/wp-config.php ]]; then
+                repo="SVN "`svn info $directory | grep URL`
+                (( svninstalls++ ))
+            else
+                repo="- Not installed with SVN. WP version $version"
+                (( notsvn++ ))
+            fi
+            echo -e "\t$repo\n" >> $VERSIONFILE
+            ###############
+
+
+            if [[ 'true' = $CHECK ]]; then
+                ###############
+                # Check to see if WP Super Cache is installed
+                if [[ -d $directory/wp-content/plugins/wp-super-cache ]]; then
+                    cache="+ WP Super Cache installed"
+                else
+                    cache="- WP Super Cache NOT installed"
+                fi
+                    echo -e "\t$cache" >> $VERSIONFILE
+                ###############
+                
+
+:<<'COMMENT'
+                ###############
+                # Check permissions on files and folders
+#            perms=`find $directory -perm /o+w -print -quit`
+#            if [ -z $perms ]; then
+#                echo -e "\t- *** Following file or folder is writable to the world: $perms" >> $VERSIONFILE
+#            fi
+                ###############
+
+
+                ###############
+                # Check for default table prefix
+                tb_prefix=`grep "table_prefix" $directory/wp-config.php | cut -d";" -f1 | cut -d"=" -f2 | sed -e "s|'||g" -e 's|"||g' -e "s|;||g" -e "s| ||g"`
+                if [[ "wp_" == $tb_prefix ]]; then
+                    echo -e "\t- Default table prefix 'wp_' is in use." >> $VERSIONFILE
+                fi
+                ###############
+
+
+                ###############
+                # Check for default admin user
+                ###############
+
+
+                ###############
+                # Check for all keys and salts
+                check_config AUTH_KEY $directory
+                check_config SECURE_AUTH_KEY $directory
+                check_config LOGGED_IN_KEY $directory
+                check_config NONCE_KEY $directory
+                check_config AUTH_SALT $directory
+                check_config SECURE_AUTH_SALT $directory
+                check_config LOGGED_IN_SALT $directory
+                check_config NONCE_SALT $directory
+                ###############
+
+
+                ###############
+                # Check for .htaccess
+                if [[ ! -f $directory/.htaccess ]]; then
+                    echo -e "\t- No htaccess file" >> $VERSIONFILE
+                fi
+                ###############
+
+
+                ###############
+                # Check for install.php
+                if [[ -f $directory/wp-admin/install.php ]]; then
+                    echo -e "\t- The install.php file exists." >> $VERSIONFILE
+                fi
+                ###############
+COMMENT
+
+                ###############
+                # Check for secured wp-config.php
+                wp_perms=`stat -c %a $directory/wp-config.php`
+                if [ "$wp_perms" != "664" ]; then
+                    echo -e "\t- Check permissions for wp-config.php" >> $VERSIONFILE
+                fi
+                ###############
+                echo '' >> $VERSIONFILE
+            fi
+            (( count++ )) 
+        fi
+done
+
+
+# Get most recent version of WordPress from wordpress.org
+wp_newest_version=`curl -s http://wordpress.org/download/ | grep "latest stable release of WordPress" | cut -d"(" -f2 | cut -d")" -f1 | cut -d" " -f2`
+
+echo '' >> $VERSIONFILE
+echo '' >> $VERSIONFILE
+echo ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;" >> $VERSIONFILE
+echo ";                                                         " >> $VERSIONFILE
+echo ";           WordPress Latest Version: $wp_newest_version  " >> $VERSIONFILE
+echo ";                                                         " >> $VERSIONFILE
+echo ";           Total SVN Installs: $svninstalls              " >> $VERSIONFILE
+echo ";           Total NOT SVN Installs: $notsvn               " >> $VERSIONFILE
+echo ";                                                         " >> $VERSIONFILE
+echo ";           Total WordPress Installs: $count              " >> $VERSIONFILE
+echo ";                                                         " >> $VERSIONFILE
+echo ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;" >> $VERSIONFILE
+
+#edit the wp-versions file
+sed -i -e "s/^/;/" $VERSIONFILE
+
+echo "WordPress installs and versions are located in the file '$VERSIONFILE'"
+
+exit 0
