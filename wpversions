@@ -233,22 +233,21 @@ footer='
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;                                                         " 
-;           WordPress Latest Version: '$wp_newest_version'  " 
-;                                                         " 
-;           Total SVN Installs: '$svninstalls'              " 
-;           Total NOT SVN Installs: '$notsvn'               " 
-;                                                         " 
-;           Total WordPress Installs: '$count'              " 
-;                                                         " 
-;                                                         " 
-;           UI = Update available, inactive               " 
-;           UA = Update available, active                 " 
-;                                                         " 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-'
+;                                                          
+;           WordPress Latest Version: '$wp_newest_version'   
+;                                                          
+;           Total SVN Installs: '$svninstalls'               
+;           Total NOT SVN Installs: '$notsvn'                
+;                                                          
+;           Total WordPress Installs: '$count'               
+;                                                          
+;                                                          
+;           UI = Update available, inactive                
+;           UA = Update available, active                  
+;                                                          
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;'
 
-echo $footer >> $VERSIONFILE
+echo "$footer" >> $VERSIONFILE
 
 # Add semi-colon to beginning of each line in the wp-versions file
 sed -i -e "s/^/;/" $VERSIONFILE
