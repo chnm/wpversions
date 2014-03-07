@@ -1,17 +1,14 @@
 #!/bin/bash
-
-
 #------------------------------------------------------------------------------#
 #   Locate all installs of Wordpress on the server.                            #
 #                                                                              #
 #   Supply the path to save the file. File does not need to exist.             #
 #                                                                              #
-#   @Author: Ammon Shepherd                                                    #
 
-
-
-set -e # End the script if any statement returns a non-true return value
-set -u # End script if an unset variable is encountered.
+# End the script if any statement returns a non-true return value
+set -e 
+# End script if an unset variable is encountered.
+set -u 
 
 # Set colors for echo
 black='\E[30;40m'
@@ -33,6 +30,52 @@ function check_config {
     elif [ "$value" == "" ]; then
         echo -e "\t- $1 does not exist" >> $VERSIONFILE
     fi
+}
+
+# Get out-of-date plugins and themes
+# give the option "theme" or "plugin" when calling the function.
+function torp_upgrader {
+    
+    while true; do
+        # declare these variables so they remane localized within function only
+        declare torp
+
+        # Call the function and pass it "theme" or "plugin", set that to
+        # variable torp (Theme OR Plugin), theme by default
+        if [ -z "$1" ]; then
+            torp="theme"
+        else
+            torp="$1"
+        fi
+
+        directory=$2
+
+        # Set Internal Field Separator to new line so that each line from the grep
+        # is put into value of array, not each word.
+        OLDIFS=$IFS
+        IFS=$'\n'
+        # declare the array and populate with the output of wp command to view
+        # theme/plugin status. "|| true" makes sure script does not exit when
+        # no themes/plugins need to be updated.
+        declare -a torp_array=($(wp --quiet --path="$directory" $torp status | sed -r "s:\x1B\[[0-9;]*[mK]::g" | egrep "UI|UA" || true));
+
+        # if all themes/plugins are up-to-date, the array is unset, then continue on
+        if [ ${#torp_array[@]} = 0 ]; then
+            echo -e "\tAll ${torp}s up to date."
+            IFS=$OLDIFS
+            break
+        else
+            echo -e "\tThe following ${torp}s are out of date."
+            for port in ${torp_array[@]}
+                do
+                echo -e "\t  $port"
+            done
+            break
+        fi
+        echo
+
+        IFS=$OLDIFS
+    done
 }
 ##############
 
@@ -82,17 +125,24 @@ for path in ${fullpath[*]}
             ###############
             # Check to see if it's an .svn install
             if [[ -d $directory/.svn && -f $directory/wp-config.php ]]; then
-                repo="SVN "`svn info $directory | grep URL`
-                (( svninstalls++ ))
+                repo="Installed version: $version \n\tSVN "`svn info $directory | grep URL`
+                svninstalls=$[svninstalls+1]
             else
-                repo="- Not installed with SVN. WP version $version"
-                (( notsvn++ ))
+                repo="Installed version: $version"
+                notsvn=$[notsvn+1]
             fi
-            echo -e "\t$repo\n" >> $VERSIONFILE
+            echo -e "\t$repo" >> $VERSIONFILE
             ###############
 
 
+
+
             if [[ 'true' = $CHECK ]]; then
+               torp_upgrader theme $directory >> $VERSIONFILE
+               torp_upgrader plugin $directory >> $VERSIONFILE
+
+
+
                 ###############
                 # Check to see if WP Super Cache is installed
                 if [[ -d $directory/wp-content/plugins/wp-super-cache ]]; then
@@ -100,7 +150,7 @@ for path in ${fullpath[*]}
                 else
                     cache="- WP Super Cache NOT installed"
                 fi
-                    echo -e "\t$cache" >> $VERSIONFILE
+                #echo -e "\t$cache" >> $VERSIONFILE
                 ###############
                 
 
@@ -164,9 +214,14 @@ COMMENT
                     echo -e "\t- Check permissions for wp-config.php" >> $VERSIONFILE
                 fi
                 ###############
+
                 echo '' >> $VERSIONFILE
-            fi
-            (( count++ )) 
+
+            fi # end if CHECK
+
+            count=$[count+1]
+            #echo -e "\n" >> $VERSIONFILE
+            echo -e "" >> $VERSIONFILE
         fi
 done
 
@@ -174,20 +229,28 @@ done
 # Get most recent version of WordPress from wordpress.org
 wp_newest_version=`curl -s http://wordpress.org/download/ | grep "latest stable release of WordPress" | cut -d"(" -f2 | cut -d")" -f1 | cut -d" " -f2`
 
-echo '' >> $VERSIONFILE
-echo '' >> $VERSIONFILE
-echo ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;" >> $VERSIONFILE
-echo ";                                                         " >> $VERSIONFILE
-echo ";           WordPress Latest Version: $wp_newest_version  " >> $VERSIONFILE
-echo ";                                                         " >> $VERSIONFILE
-echo ";           Total SVN Installs: $svninstalls              " >> $VERSIONFILE
-echo ";           Total NOT SVN Installs: $notsvn               " >> $VERSIONFILE
-echo ";                                                         " >> $VERSIONFILE
-echo ";           Total WordPress Installs: $count              " >> $VERSIONFILE
-echo ";                                                         " >> $VERSIONFILE
-echo ";;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;" >> $VERSIONFILE
+footer='
 
-#edit the wp-versions file
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                         " 
+;           WordPress Latest Version: '$wp_newest_version'  " 
+;                                                         " 
+;           Total SVN Installs: '$svninstalls'              " 
+;           Total NOT SVN Installs: '$notsvn'               " 
+;                                                         " 
+;           Total WordPress Installs: '$count'              " 
+;                                                         " 
+;                                                         " 
+;           UI = Update available, inactive               " 
+;           UA = Update available, active                 " 
+;                                                         " 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+'
+
+echo $footer >> $VERSIONFILE
+
+# Add semi-colon to beginning of each line in the wp-versions file
 sed -i -e "s/^/;/" $VERSIONFILE
 
 echo "WordPress installs and versions are located in the file '$VERSIONFILE'"
