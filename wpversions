@@ -98,7 +98,8 @@ if [ $VERSIONFILE == $0 ]; then
     read -e VERSIONFILE
 fi
 
-if [ -f $VERSIONFILE ]; then
+while [ -f $VERSIONFILE ]
+do
     echo -en "${red}Overwrite existing file ${VERSIONFILE}${reset}? (y/n): "
     read answer
     if [ $answer == "y" ];then
@@ -107,7 +108,7 @@ if [ -f $VERSIONFILE ]; then
         echo -n "Enter new name for file: "
         read -e VERSIONFILE
     fi
-fi
+done
 
 fullpath=( $(locate 'wp-includes/version.php') )
 
